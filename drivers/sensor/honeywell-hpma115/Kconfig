@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+
+config HPMA115
+	bool "HPMA115 peripheral"
+	default y
+	depends on UART_INTERRUPT_DRIVEN
+	help
+	  Enable hpma115 sensor

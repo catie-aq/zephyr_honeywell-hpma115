@@ -1,0 +1,6 @@
+description: |
+  HPMA115 example.
+
+compatible: "honeywell,hpma115"
+
+include: [sensor-device.yaml, uart-device.yaml]
