@@ -11,19 +11,6 @@
 
 #define HPMA115_WAIT K_SECONDS(1)
 
-typedef struct {
-    /** PM2.5 in µg/m³. */
-    uint16_t pm2_5;
-    /** PM10 in µg/m³. */
-    uint16_t pm10;
-    /** PM1.0 in µg/m³. */
-    uint16_t pm1_0;
-    /** PM4.0 in µg/m³. */
-    uint16_t pm4_0;
-    /** Validity of PM1.0 and PM4.0 values. */
-    bool pm1_pm4_valid;
-} hpma115_sensor_values;
-
 enum hpma115_cmd {
     ReadMeas = 0x04,
     StartMeas = 0x01,
@@ -44,6 +31,23 @@ enum hpma115_header {
 };
 
 /**
+ * @brief User define structure accessible through the API dev->data
+ * 
+ */
+struct hpma115_sensor_data {
+    /** PM2.5 in µg/m³. */
+    uint16_t pm2_5;
+    /** PM10 in µg/m³. */
+    uint16_t pm10;
+    /** PM1.0 in µg/m³. */
+    uint16_t pm1_0;
+    /** PM4.0 in µg/m³. */
+    uint16_t pm4_0;
+    /** Validity of PM1.0 and PM4.0 values. */
+    bool pm1_pm4_valid;
+};
+
+/**
  * @brief Contains runtime mutable data for the UART peripheral.
  */
 struct uart_data
@@ -55,20 +59,19 @@ struct uart_data
     struct k_sem tx_sem;
 	struct k_sem rx_sem;
 
-    hpma115_sensor_values sensor_values;
     enum hpma115_cmd cmd;
 };
 
 /**
  * @brief Build time configurations for the UART peripheral.
  */
-struct uart_conf
+struct hpma115_conf
 {
-    //struct uart_data *data;           // Pointer to runtime data.
+    struct uart_data *uart_data;
     const struct device *uart_dev;       // UART device.
 };
 
-enum sensor_attribute_mhz19b {
+enum sensor_attribute_hpma115 {
 	/** Automatic Baseline Correction Self Calibration Function. */
 	SENSOR_ATTR_START_MEAS = SENSOR_ATTR_PRIV_START,
 };

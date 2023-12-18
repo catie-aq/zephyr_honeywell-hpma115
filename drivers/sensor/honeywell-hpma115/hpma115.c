@@ -12,6 +12,7 @@
 #include <zephyr/logging/log.h> 
 LOG_MODULE_REGISTER(honeywell_hmpa115, CONFIG_SENSOR_LOG_LEVEL);
 
+
 // define private prototypes
 static int hpma115_send_command(const struct device *dev, enum hpma115_cmd cmd);
 static bool hpma115_read_data(const struct device *dev, enum hpma115_cmd cmd,  uint8_t *len, uint8_t **data);
@@ -41,15 +42,16 @@ static int hpma115_attr_stop_measurement(const struct device *dev)
  * @brief read measurement.
  * 
  * @param dev hpma115 UART peripheral device.
- * @param result pointer to structure to store read data
  */
-static bool hpma115_read_measurement(const struct device *dev, hpma115_sensor_values *result)
+static bool hpma115_read_measurement(const struct device *dev)
 {
+    struct hpma115_sensor_data *result = dev->data;
+    struct hpma115_conf *conf = dev->config; 
     uint8_t len;
     uint8_t *data;
 
     enum hpma115_cmd command = ReadMeas;
-    if (!hpma115_read_data(dev, command, &len, &data)) {
+    if (!hpma115_read_data(conf->uart_dev, command, &len, &data)) {
         return false;
     }
 
@@ -76,19 +78,30 @@ static bool hpma115_read_measurement(const struct device *dev, hpma115_sensor_va
     return true;
 }
 
+static int hpma115_sample_fetch(const struct device *dev, enum sensor_channel chan)
+{
+    return hpma115_read_measurement(dev);
+}
+
 static int hpma115_channel_get(const struct device *dev, enum sensor_channel chan,
 			      struct sensor_value *val)
 {
-	struct uart_data *data = dev->data;
+	struct hpma115_sensor_data *data = dev->data;
 
-	if (chan != SENSOR_CHAN_CO2) {
-		return -ENOTSUP;
-	}
-
-    hpma115_read_measurement(dev, &data->sensor_values);
-
-    val->val1 = (int32_t)data->sensor_values.pm1_0;
-    val->val2 = 0;
+    if (chan == SENSOR_CHAN_PM_1_0) {    
+        val->val1 = (int32_t)data->pm1_0;
+        val->val2 = 0;
+    } else if (chan == SENSOR_CHAN_PM_2_5) {
+        val->val1 = (int32_t)data->pm2_5;
+        val->val2 = 0;
+    } else if (chan == SENSOR_CHAN_PM_10) {
+        val->val1 = (int32_t)data->pm10;
+        val->val2 = 0;
+    } else {        
+        // val->val1 = (int32_t)data->sensor_values.pm4_0;
+        // val->val2 = 0;
+        return -ENOTSUP;
+    }
     
 	return 0;
 }
@@ -112,7 +125,18 @@ static int hpma115_attr_set(const struct device *dev, enum sensor_channel chan,
 static const struct sensor_driver_api hpma115_api_funcs = {
 	.attr_set = hpma115_attr_set,
 	.channel_get = hpma115_channel_get,
+    .sample_fetch = hpma115_sample_fetch,
 };
+
+static void hmpa115_clear_uart_data(const struct device *dev)
+{
+    struct hpma115_conf *conf = dev->config; 
+    struct uart_data *data = conf->uart_data;
+
+    memset(data->rx_buf, '\0', sizeof(data->rx_buf));
+    memset(data->tx_buf, '\0', sizeof(data->tx_buf));
+    data->rx_data_len = 0;
+}
 
 static void hpma115_uart_flush(const struct device *uart_dev)
 {
@@ -137,40 +161,49 @@ static uint8_t hpma115_compute_checksum(uint8_t *frame)
 
 static int hpma115_read_response(const struct device *dev, int len)
 {
-    struct uart_data *data = dev->data;
+    struct hpma115_conf *conf = dev->config; 
+    struct uart_data *data = conf->uart_data;
     char c;
     int ret = 0;
 
-    ret = k_sem_take(&data->rx_sem, HPMA115_WAIT);
+     printk("[sensor][read response]\n");
 
-    if (ret) {
-	    return ret;
-	}
+    // ret = k_sem_take(&data->rx_sem, HPMA115_WAIT);
+
+    // if (ret) {
+	//     return ret;
+	// }
 
     while(len) {
-        if (!uart_poll_in(dev, &c)) {
+        if (!uart_poll_in(conf->uart_dev, &c)) {
             data->rx_buf[data->rx_data_len] = c; 
             data->rx_data_len++;
             len--;
         }
+       
+        //LOG_DBG(".");
     }
 
-    k_sem_give(&data->rx_sem);
+    // k_sem_give(&data->rx_sem);
 
     return ret;
 }
 
 static int hpma115_send_command(const struct device *dev, enum hpma115_cmd cmd)
 {
-    struct uart_conf *conf = dev->config; 
-    struct uart_data *data = dev->data;
+    struct hpma115_conf *conf = dev->config; 
+    struct uart_data *data = conf->uart_data;
     int ret = 0;
 
-    ret = k_sem_take(&data->tx_sem, HPMA115_WAIT);
+    hpma115_uart_flush(conf->uart_dev);
+    hmpa115_clear_uart_data(conf->uart_dev);
 
-    if (ret) {
-		return ret;
-	}
+    // ret = k_sem_take(&data->tx_sem, HPMA115_WAIT);
+
+    // if (ret) {
+	// 	return ret;
+	// }
+    printk("[sensor][send command]\n");
     
     data->tx_buf[0] = (char)(Send);
     data->tx_buf[1] = 1;
@@ -184,15 +217,15 @@ static int hpma115_send_command(const struct device *dev, enum hpma115_cmd cmd)
     data->rx_data_len = 0;
 
     for (size_t i = 0;i < 4; i++) {
-        uart_poll_out(dev, data->tx_buf[i]);
+        uart_poll_out(conf->uart_dev, data->tx_buf[i]);
     }
 
-    k_sem_give(&data->tx_sem);
+    // k_sem_give(&data->tx_sem);
 
     ret = hpma115_read_response(dev, 2);
-    if (ret) {
-		return ret;
-	}
+    // if (ret) {
+	// 	return ret;
+	// }
 
     if (data->rx_buf[0] == data->rx_buf[1] && data->rx_buf[0] != (char)(Ack)) {
         return -1;
@@ -203,8 +236,8 @@ static int hpma115_send_command(const struct device *dev, enum hpma115_cmd cmd)
 
 static bool hpma115_read_data(const struct device *dev, enum hpma115_cmd cmd,  uint8_t *len, uint8_t **data_in)
 {
-    struct uart_conf *conf = dev->config;
-    struct uart_data *data = dev->data;
+    struct hpma115_conf *conf = dev->config; 
+    struct uart_data *data = conf->uart_data;
 
     data->tx_buf[0] = (char)(Send);
     data->tx_buf[1] = 1;
@@ -287,14 +320,14 @@ static bool hpma115_read_data(const struct device *dev, enum hpma115_cmd cmd,  u
 
 static int hpma115_init(const struct device *dev)
 {
-	struct uart_data *data = dev->data;
-	const struct uart_conf *cfg = dev->config;
-	int ret;
+	struct hpma115_conf *conf = dev->config; 
+    struct uart_data *data = conf->uart_data;
+	int ret = 0;
 
-	uart_irq_rx_disable(cfg->uart_dev);
-	uart_irq_tx_disable(cfg->uart_dev);
+	// uart_irq_rx_disable(cfg->uart_dev);
+	// uart_irq_tx_disable(cfg->uart_dev);
 
-	hpma115_uart_flush(cfg->uart_dev);
+	hpma115_uart_flush(conf->uart_dev);
 
 	//uart_irq_callback_user_data_set(cfg->uart_dev, cfg->cb, (void *)dev);
 
@@ -302,7 +335,9 @@ static int hpma115_init(const struct device *dev)
     k_sem_init(&data->rx_sem, 1, 1);
 
 	/* start measurement */
+    LOG_DBG("Start measurement...");
     ret = hpma115_attr_start_measurement(dev);
+    LOG_DBG(" OK\n");
 	if (ret != 0) {
 		LOG_ERR("Error start measurement!");
 		return ret;
@@ -312,14 +347,14 @@ static int hpma115_init(const struct device *dev)
 }
 #define HPMA115_INIT(inst)									\
 												\
-	static struct uart_data uart_data_##inst;						\
+	static struct hpma115_sensor_data hpma115_sensor_data_##inst;				\
 												\
-	static const struct uart_conf uart_conf_##inst = {					\
+	static const struct hpma115_conf hpma115_conf_##inst = {					\
 		.uart_dev = DEVICE_DT_GET(DT_INST_BUS(inst)),					\
 	};											\
 												\
 	SENSOR_DEVICE_DT_INST_DEFINE(inst, hpma115_init, NULL,					\
-			      &uart_data_##inst, &uart_conf_##inst,				\
+			      &hpma115_sensor_data_##inst, &hpma115_conf_##inst,				\
 			      POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY, &hpma115_api_funcs);
 
 DT_INST_FOREACH_STATUS_OKAY(HPMA115_INIT)
