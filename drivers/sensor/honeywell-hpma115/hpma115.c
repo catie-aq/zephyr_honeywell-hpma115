@@ -15,8 +15,9 @@ LOG_MODULE_REGISTER(honeywell_hmpa115, CONFIG_SENSOR_LOG_LEVEL);
 
 // define private prototypes
 static int hpma115_send_command(const struct device *dev, enum hpma115_cmd cmd);
-static bool hpma115_read_data(const struct device *dev, enum hpma115_cmd cmd,  uint8_t *len, uint8_t **data);
-
+static bool hpma115_read_data(const struct device *dev,  uint8_t *len, uint8_t **data);
+static uint8_t hpma115_compute_checksum(uint8_t *frame);
+static int hpma115_read_response(const struct device *dev, int len);
 
 /**
  * @brief start measurement.
@@ -45,17 +46,17 @@ static int hpma115_attr_stop_measurement(const struct device *dev)
  */
 static bool hpma115_read_measurement(const struct device *dev)
 {
-    struct hpma115_sensor_data *result = dev->data;
     struct hpma115_conf *conf = dev->config; 
+    struct hpma115_sensor_data *result = dev->data;
+    
     uint8_t len;
     uint8_t *data;
 
-    enum hpma115_cmd command = ReadMeas;
-    if (!hpma115_read_data(conf->uart_dev, command, &len, &data)) {
+    if (!hpma115_read_data(dev, &len, &data)) {
         return false;
     }
 
-    if (data[0] != (uint8_t)(command)) {
+    if (data[0] != (uint8_t)(ReadMeas)) {
         return false;
     } 
     
@@ -80,7 +81,67 @@ static bool hpma115_read_measurement(const struct device *dev)
 
 static int hpma115_sample_fetch(const struct device *dev, enum sensor_channel chan)
 {
-    return hpma115_read_measurement(dev);
+    struct hpma115_conf *conf = dev->config; 
+    struct uart_data *data = conf->uart_data;
+    struct hpma115_sensor_data *result = dev->data;
+    uint8_t len;
+    uint8_t *data_out;
+
+    //hpma115_send_command(conf->uart_dev, ReadMeas);
+    if (hpma115_send_command(dev, ReadMeas)) {
+        return false;
+    }
+
+
+    // clear uart rx data index
+    data->rx_data_len = 0;
+
+    hpma115_read_response(dev, 2);
+
+    if (data->rx_buf[0] == (char)(Resp)) {
+        if (data->rx_buf[1] > (HPMA115_BUF_LEN - 3)) {
+            return false;
+        }
+
+        hpma115_read_response(dev, data->rx_buf[1] + 1);
+
+        if (hpma115_compute_checksum(data->rx_buf) != 0) {
+            return false;
+        }
+
+        len = data->rx_buf[1];
+        data_out = data->rx_buf + 2;
+
+    }  else {
+        len = 0;
+        data_out = NULL;
+        return false;
+    }
+
+    if (data_out[0] != (uint8_t)(ReadMeas)) {
+        return false;
+    } 
+    
+    if (len == 13) { /* It's a compact sensor. */
+        result->pm1_pm4_valid = true;
+        result->pm1_0 = ((uint16_t)(data_out[1]) << 8) + data_out[2];
+        result->pm2_5 = ((uint16_t)(data_out[3]) << 8) + data_out[4];
+        result->pm4_0 = ((uint16_t)(data_out[5]) << 8) + data_out[6];
+        result->pm10 = ((uint16_t)(data_out[7]) << 8) + data_out[8];
+    } else if (len == 5) { /* It's a standard sensor. */
+        result->pm1_pm4_valid = false;
+        result->pm1_0 = 0;
+        result->pm4_0 = 0;
+        result->pm2_5 = ((uint16_t)(data_out[1]) << 8) + data_out[2];
+        result->pm10 = ((uint16_t)(data_out[3]) << 8) + data_out[4];
+    } else {
+        return false;
+    }
+    
+    return true;
+
+
+    //return hpma115_read_measurement(dev);
 }
 
 static int hpma115_channel_get(const struct device *dev, enum sensor_channel chan,
@@ -166,7 +227,7 @@ static int hpma115_read_response(const struct device *dev, int len)
     char c;
     int ret = 0;
 
-     printk("[sensor][read response]\n");
+    LOG_DBG("[sensor][read response]\n");
 
     // ret = k_sem_take(&data->rx_sem, HPMA115_WAIT);
 
@@ -180,8 +241,6 @@ static int hpma115_read_response(const struct device *dev, int len)
             data->rx_data_len++;
             len--;
         }
-       
-        //LOG_DBG(".");
     }
 
     // k_sem_give(&data->rx_sem);
@@ -195,19 +254,18 @@ static int hpma115_send_command(const struct device *dev, enum hpma115_cmd cmd)
     struct uart_data *data = conf->uart_data;
     int ret = 0;
 
-    hpma115_uart_flush(conf->uart_dev);
-    hmpa115_clear_uart_data(conf->uart_dev);
+    //hpma115_uart_flush(conf->uart_dev);
+    // hmpa115_clear_uart_data(conf->uart_dev);
+
 
     // ret = k_sem_take(&data->tx_sem, HPMA115_WAIT);
 
     // if (ret) {
 	// 	return ret;
-	// }
-    printk("[sensor][send command]\n");
-    
-    data->tx_buf[0] = (char)(Send);
+	// }    
+    data->tx_buf[0] = (uint8_t)(Send);
     data->tx_buf[1] = 1;
-    data->tx_buf[2] = (char)(cmd);
+    data->tx_buf[2] = (uint8_t)(cmd);
 
     /* Invalid checksum and compute it */
     data->tx_buf[3] = 0;
@@ -227,36 +285,38 @@ static int hpma115_send_command(const struct device *dev, enum hpma115_cmd cmd)
 	// 	return ret;
 	// }
 
-    if (data->rx_buf[0] == data->rx_buf[1] && data->rx_buf[0] != (char)(Ack)) {
+    if (data->rx_buf[0] == data->rx_buf[1] && data->rx_buf[0] != (uint8_t)(Ack)) {
+        LOG_DBG("Ack error\n");
         return -1;
     }
+
+    LOG_DBG("ACK %d %d",  data->rx_buf[0], data->rx_buf[1]);
 
     return ret;
 }
 
-static bool hpma115_read_data(const struct device *dev, enum hpma115_cmd cmd,  uint8_t *len, uint8_t **data_in)
+static bool hpma115_read_data(const struct device *dev,  uint8_t *len, uint8_t **data_in)
 {
     struct hpma115_conf *conf = dev->config; 
+    
     struct uart_data *data = conf->uart_data;
 
-    data->tx_buf[0] = (char)(Send);
-    data->tx_buf[1] = 1;
-    data->tx_buf[2] = (char)(cmd);
+    hpma115_send_command(conf->uart_dev, ReadMeas);
+    
+    //hpma115_send_command(dev, ReadMeas);
 
-    /* Invalid checksum and compute it */
-    data->tx_buf[3] = 0;
-    data->tx_buf[3] = hpma115_compute_checksum(data->tx_buf);
 
-    hpma115_send_command(dev, cmd);
+    // clear uart rx data index
+    data->rx_data_len = 0;
 
-    hpma115_read_response(dev, 2);
+    hpma115_read_response(conf->uart_dev, 2);
 
     if (data->rx_buf[0] == (char)(Resp)) {
         if (data->rx_buf[1] > (HPMA115_BUF_LEN - 3)) {
             return false;
         }
 
-        hpma115_read_response(data->rx_buf + 2, data->rx_buf[1] + 1);
+        hpma115_read_response(conf->uart_dev, data->rx_buf[1] + 1);
 
         if (hpma115_compute_checksum(data->rx_buf) != 0) {
             return false;
@@ -331,17 +391,17 @@ static int hpma115_init(const struct device *dev)
 
 	//uart_irq_callback_user_data_set(cfg->uart_dev, cfg->cb, (void *)dev);
 
-	k_sem_init(&data->tx_sem, 0, 1);
-    k_sem_init(&data->rx_sem, 1, 1);
+	// k_sem_init(&data->tx_sem, 0, 1);
+    // k_sem_init(&data->rx_sem, 1, 1);
 
 	/* start measurement */
     LOG_DBG("Start measurement...");
     ret = hpma115_attr_start_measurement(dev);
-    LOG_DBG(" OK\n");
 	if (ret != 0) {
 		LOG_ERR("Error start measurement!");
 		return ret;
 	}
+    LOG_DBG(" OK\n");
 
 	return ret;
 }

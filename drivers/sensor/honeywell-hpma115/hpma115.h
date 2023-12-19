@@ -31,7 +31,7 @@ enum hpma115_header {
 };
 
 /**
- * @brief User define structure accessible through the API dev->data
+ * @brief 
  * 
  */
 struct hpma115_sensor_data {
