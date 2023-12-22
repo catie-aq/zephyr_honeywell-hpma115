@@ -112,6 +112,9 @@ static int hpma115_sample_fetch(const struct device *dev, enum sensor_channel ch
         len = data->rx_buf[1];
         data_out = data->rx_buf + 2;
 
+        LOG_DBG("[data length] %d\n", len);
+
+
     }  else {
         len = 0;
         data_out = NULL;
@@ -189,21 +192,20 @@ static const struct sensor_driver_api hpma115_api_funcs = {
     .sample_fetch = hpma115_sample_fetch,
 };
 
-static void hmpa115_clear_uart_data(const struct device *dev)
+static void hmpa115_clear_uart_data(struct uart_data *data)
 {
-    struct hpma115_conf *conf = dev->config; 
-    struct uart_data *data = conf->uart_data;
-
+    data->rx_data_len = 0;
     memset(data->rx_buf, '\0', sizeof(data->rx_buf));
     memset(data->tx_buf, '\0', sizeof(data->tx_buf));
-    data->rx_data_len = 0;
+    
 }
 
-static void hpma115_uart_flush(const struct device *uart_dev)
+static void hpma115_uart_flush(const struct device *dev)
 {
+    struct hpma115_conf *conf = dev->config;
 	uint8_t c;
 
-	while (uart_fifo_read(uart_dev, &c, 1) > 0) {
+	while (uart_fifo_read(conf->uart_dev, &c, 1) > 0) {
 		continue;
 	}
 }
@@ -224,10 +226,10 @@ static int hpma115_read_response(const struct device *dev, int len)
 {
     struct hpma115_conf *conf = dev->config; 
     struct uart_data *data = conf->uart_data;
-    char c;
+    uint8_t c;
     int ret = 0;
-
-    LOG_DBG("[sensor][read response]\n");
+    int rx_len = 0;
+    uint8_t rx_buff[HPMA115_BUF_LEN];
 
     // ret = k_sem_take(&data->rx_sem, HPMA115_WAIT);
 
@@ -237,9 +239,19 @@ static int hpma115_read_response(const struct device *dev, int len)
 
     while(len) {
         if (!uart_poll_in(conf->uart_dev, &c)) {
-            data->rx_buf[data->rx_data_len] = c; 
-            data->rx_data_len++;
+            rx_buff[rx_len] = c;
+            rx_len++;
             len--;
+        }
+    }
+
+    LOG_DBG("rx data length: %d\n", rx_len);
+    data->rx_data_len = rx_len;
+
+    if (rx_len) {
+        for (int i = 0; i < rx_len; i++) {
+            LOG_DBG("rx_buf[%d] %X", i, rx_buff[i]);
+            data->rx_buf[i] = rx_buff[i];
         }
     }
 
@@ -253,9 +265,11 @@ static int hpma115_send_command(const struct device *dev, enum hpma115_cmd cmd)
     struct hpma115_conf *conf = dev->config; 
     struct uart_data *data = conf->uart_data;
     int ret = 0;
+    int len  = 2;
+    uint8_t c;
 
-    //hpma115_uart_flush(conf->uart_dev);
-    // hmpa115_clear_uart_data(conf->uart_dev);
+    hpma115_uart_flush(dev);
+    hmpa115_clear_uart_data(data);
 
 
     // ret = k_sem_take(&data->tx_sem, HPMA115_WAIT);
@@ -271,8 +285,10 @@ static int hpma115_send_command(const struct device *dev, enum hpma115_cmd cmd)
     data->tx_buf[3] = 0;
     data->tx_buf[3] = hpma115_compute_checksum(data->tx_buf);
 
+    LOG_DBG("Tx buf: %X %X %X %X\n",  data->tx_buf[0], data->tx_buf[1], data->tx_buf[2], data->tx_buf[3]);
+
     // clear uart rx data index
-    data->rx_data_len = 0;
+    // data->rx_data_len = 0;
 
     for (size_t i = 0;i < 4; i++) {
         uart_poll_out(conf->uart_dev, data->tx_buf[i]);
@@ -290,7 +306,7 @@ static int hpma115_send_command(const struct device *dev, enum hpma115_cmd cmd)
         return -1;
     }
 
-    LOG_DBG("ACK %d %d",  data->rx_buf[0], data->rx_buf[1]);
+    LOG_DBG("ACK %X %X",  data->rx_buf[0], data->rx_buf[1]);
 
     return ret;
 }
@@ -395,13 +411,13 @@ static int hpma115_init(const struct device *dev)
     // k_sem_init(&data->rx_sem, 1, 1);
 
 	/* start measurement */
-    LOG_DBG("Start measurement...");
-    ret = hpma115_attr_start_measurement(dev);
-	if (ret != 0) {
-		LOG_ERR("Error start measurement!");
-		return ret;
-	}
-    LOG_DBG(" OK\n");
+    // LOG_DBG("Start measurement...");
+    // ret = hpma115_attr_start_measurement(dev);
+	// if (ret != 0) {
+	// 	LOG_ERR("Error start measurement!");
+	// 	return ret;
+	// }
+    // LOG_DBG(" OK\n");
 
 	return ret;
 }
