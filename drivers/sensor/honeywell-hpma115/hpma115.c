@@ -400,15 +400,15 @@ static int hpma115_init(const struct device *dev)
     struct uart_data *data = conf->uart_data;
 	int ret = 0;
 
-	// uart_irq_rx_disable(cfg->uart_dev);
+	// uart_irq_rx_disable(conf->uart_dev);
 	// uart_irq_tx_disable(cfg->uart_dev);
 
 	hpma115_uart_flush(conf->uart_dev);
 
-	//uart_irq_callback_user_data_set(cfg->uart_dev, cfg->cb, (void *)dev);
+	// uart_irq_callback_user_data_set(cfg->uart_dev, cfg->cb, (void *)dev);
 
 	// k_sem_init(&data->tx_sem, 0, 1);
-    // k_sem_init(&data->rx_sem, 1, 1);
+    // k_sem_init(&data->rx_sem, 0, 1);
 
 	/* start measurement */
     // LOG_DBG("Start measurement...");
