@@ -55,7 +55,8 @@ struct uart_data
     uint8_t   xfer_bytes;
     uint8_t   tx_buf[HPMA115_BUF_LEN]; // uart tx buffer 
     uint8_t   rx_buf[HPMA115_BUF_LEN]; // uart rx buffer
-    uint8_t   rx_data_len;
+    uint8_t   rx_data_len; // in polling mode
+    uint8_t   rx_data_len_to_read; // in interrupt mode
     bool      has_rsp;
 
     struct k_sem tx_sem;
