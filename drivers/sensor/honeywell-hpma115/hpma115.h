@@ -52,9 +52,11 @@ struct hpma115_sensor_data {
  */
 struct uart_data
 {
+    uint8_t   xfer_bytes;
     uint8_t   tx_buf[HPMA115_BUF_LEN]; // uart tx buffer 
     uint8_t   rx_buf[HPMA115_BUF_LEN]; // uart rx buffer
     uint8_t   rx_data_len;
+    bool      has_rsp;
 
     struct k_sem tx_sem;
 	struct k_sem rx_sem;
@@ -69,6 +71,7 @@ struct hpma115_conf
 {
     struct uart_data *uart_data;
     const struct device *uart_dev;       // UART device.
+    uart_irq_callback_user_data_t cb;
 };
 
 enum sensor_attribute_hpma115 {
