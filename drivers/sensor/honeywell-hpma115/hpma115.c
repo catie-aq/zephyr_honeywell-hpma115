@@ -223,21 +223,9 @@ static int hpma115_send_command(const struct device *dev, enum hpma115_cmd cmd)
     /* Invalid checksum and compute it */
     data->tx_buf[3] = 0;
     data->tx_buf[3] = hpma115_compute_checksum(data->tx_buf);
-    //LOG_DBG("Tx buf: %X %X %X %X\n",  data->tx_buf[0], data->tx_buf[1], data->tx_buf[2], data->tx_buf[3]);
-
-    // tx_buf[0] = 0x68;
-    // tx_buf[1] = 0x01;
-    // tx_buf[2] = 0x01;
-    // tx_buf[3] = 0x96;
-    
-    // transmit data
-    // for (size_t i = 0; i < 4; i++) {
-        // uart_poll_out(conf->uart_dev, data->tx_buf[i]);
-        // uart_poll_out(conf->uart_dev, tx_buf[i]);
-    // }
 
     ret = hpma115_write_command(dev, 4);
-    // ret = hpma155_poll_read_response(dev, 2);
+
     ret = hpma115_read_response(dev, 2);
       
     return ret;
@@ -260,10 +248,6 @@ static int hpma155_poll_read_response(const struct device *dev, uint8_t length_t
     const struct hpma115_conf *conf = dev->config;
     struct uart_data *data = conf->uart_data;
     uint8_t c;
-
-    // DBG: local variables
-    // uint8_t rx_buf[5] = {0};
-    // uint8_t rx_data_len = 0;
 
     data->rx_data_len = 0;
     while(length_to_read) {
@@ -288,9 +272,8 @@ static int hpma115_read_response(const struct device *dev, uint8_t length)
     data->xfer_bytes = 0;
 
     uart_irq_rx_enable(conf->uart_dev);
-
     k_msleep(200);
-    //int ret = k_sem_take(&data->rx_sem, HPMA115_WAIT);
+    // int ret = k_sem_take(&data->rx_sem, HPMA115_WAIT);
 
     // if (ret) {
     //     LOG_DBG("Error occured!\n");
@@ -319,7 +302,8 @@ static int hpma115_read_response(const struct device *dev, uint8_t length)
 static void hpma115_uart_isr(const struct device *uart_dev, void *user_data)
 {
 	const struct device *dev = user_data;
-	struct uart_data *data = dev->data;
+    const struct hpma115_conf *conf = dev->config;
+	struct uart_data *data = conf->uart_data;
 
 	ARG_UNUSED(user_data);
 
@@ -374,7 +358,7 @@ static int hpma115_init(const struct device *dev)
 	uart_irq_callback_user_data_set(conf->uart_dev, conf->cb, (void *)dev);
 
 	// k_sem_init(&data->tx_sem, 0, 1);
-    k_sem_init(&data->rx_sem, 1, 1);
+    k_sem_init(&data->rx_sem, 0, 1);
 
 	/* start measurement */
     // LOG_DBG("Start measurement...");
@@ -390,8 +374,11 @@ static int hpma115_init(const struct device *dev)
 #define HPMA115_INIT(inst)									\
 												\
 	static struct hpma115_sensor_data hpma115_sensor_data_##inst;				\
+                                                \
+    static struct uart_data hpma115_uart_data; \
 												\
 	static const struct hpma115_conf hpma115_conf_##inst = {					\
+        .uart_data = &hpma115_uart_data, \
 		.uart_dev = DEVICE_DT_GET(DT_INST_BUS(inst)),					\
         .cb = hpma115_uart_isr,                 \
 	};											\
