@@ -14,7 +14,7 @@ LOG_MODULE_REGISTER(honeywell_hmpa115, CONFIG_SENSOR_LOG_LEVEL);
 
 // define private prototypes
 static int hpma115_send_command(const struct device *dev, enum hpma115_cmd cmd);
-static int hpma115_write_command(const struct device *dev, uint8_t cmd_length);
+static void hpma115_write_command(const struct device *dev, uint8_t cmd_length);
 static int hpma115_read_response(const struct device *dev, uint8_t length);
 static int hpma155_poll_read_response(const struct device *dev, uint8_t length_to_read);
 static int hpma115_read_data(const struct device *dev,  uint8_t *len, uint8_t **data_out);
@@ -52,8 +52,6 @@ static int hpma115_attr_stop_measurement(const struct device *dev)
 
 static int hpma115_sample_fetch(const struct device *dev, enum sensor_channel chan)
 {
-    const struct hpma115_conf *conf = dev->config; 
-    struct uart_data *data = conf->uart_data;
     struct hpma115_sensor_data *result = dev->data;
     uint8_t len = 0;
     uint8_t *data_out = NULL;
@@ -130,7 +128,7 @@ static void hmpa115_clear_uart_data(struct uart_data *data)
 
 static void hpma115_uart_flush(const struct device *dev)
 {
-    struct hpma115_conf *conf = dev->config;
+    const struct hpma115_conf *conf = dev->config;
 	uint8_t c;
 
 	while (uart_fifo_read(conf->uart_dev, &c, 1) > 0) {
@@ -152,9 +150,8 @@ static uint8_t hpma115_compute_checksum(uint8_t *frame)
 
 static int hpma115_read_data(const struct device *dev,  uint8_t *len, uint8_t **data_out)
 {
-    struct hpma115_conf *conf = dev->config;
+    const struct hpma115_conf *conf = dev->config;
     struct uart_data *data = conf->uart_data;
-    struct hpma115_sensor_data *result = dev->data;
     int ret;
 
     data->tx_buf[0] = (uint8_t)(Send);
@@ -165,7 +162,7 @@ static int hpma115_read_data(const struct device *dev,  uint8_t *len, uint8_t **
     data->tx_buf[3] = 0;
     data->tx_buf[3] = hpma115_compute_checksum(data->tx_buf);
 
-    ret = hpma115_write_command(dev, 4);
+    hpma115_write_command(dev, 4);
 
     ret = hpma115_read_response(dev, HPMA115_BUF_LEN);
 
@@ -184,7 +181,6 @@ static int hpma115_send_command(const struct device *dev, enum hpma115_cmd cmd)
     const struct hpma115_conf *conf = dev->config; 
     struct uart_data *data = conf->uart_data;
     int ret = 0;
-    uint8_t tx_buf[5] = {0};
 
     hpma115_uart_flush(dev);
     hmpa115_clear_uart_data(data);
@@ -197,7 +193,7 @@ static int hpma115_send_command(const struct device *dev, enum hpma115_cmd cmd)
     data->tx_buf[3] = 0;
     data->tx_buf[3] = hpma115_compute_checksum(data->tx_buf);
 
-    ret = hpma115_write_command(dev, 4);
+    hpma115_write_command(dev, 4);
 
     ret = hpma115_read_response(dev, 2);
 
@@ -213,7 +209,7 @@ static int hpma115_send_command(const struct device *dev, enum hpma115_cmd cmd)
     return ret;
 }
 
-static int hpma115_write_command(const struct device *dev, uint8_t cmd_length)
+static void hpma115_write_command(const struct device *dev, uint8_t cmd_length)
 {
     const struct hpma115_conf *conf = dev->config;
     struct uart_data *data = conf->uart_data;
@@ -233,7 +229,7 @@ static int hpma155_poll_read_response(const struct device *dev, uint8_t length_t
 
     data->rx_data_len = 0;
     while(length_to_read) {
-        if (!uart_poll_in(&conf->uart_dev, &c)) {
+        if (!uart_poll_in(conf->uart_dev, &c)) {
             data->rx_buf[ data->rx_data_len] = c;
             data->rx_data_len++;
             length_to_read--;
@@ -241,6 +237,8 @@ static int hpma155_poll_read_response(const struct device *dev, uint8_t length_t
     }
 
     LOG_DBG("Rx buff %X %X\n", data->rx_buf[0], data->rx_buf[1]);
+
+    return data->rx_data_len;
 }
 
 static int hpma115_read_response(const struct device *dev, uint8_t length)
@@ -295,7 +293,7 @@ static void hpma115_uart_isr(const struct device *uart_dev, void *user_data)
 
 static int hpma115_init(const struct device *dev)
 {
-	struct hpma115_conf *conf = dev->config; 
+	const struct hpma115_conf *conf = dev->config; 
     struct uart_data *data = conf->uart_data;
 	int ret = 0;
 
