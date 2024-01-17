@@ -218,7 +218,7 @@ static int hpma115_write_command(const struct device *dev, uint8_t cmd_length)
     const struct hpma115_conf *conf = dev->config;
     struct uart_data *data = conf->uart_data;
 
-    LOG_DBG("Tx buf: %X %X %X %X\n",  data->tx_buf[0], data->tx_buf[1], data->tx_buf[2], data->tx_buf[3]);
+    LOG_DBG("Tx buf: %X %X %X %X",  data->tx_buf[0], data->tx_buf[1], data->tx_buf[2], data->tx_buf[3]);
 
     for (uint8_t i = 0; i < cmd_length; i++) {
         uart_poll_out(conf->uart_dev, data->tx_buf[i]);
