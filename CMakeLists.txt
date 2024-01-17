@@ -7,3 +7,4 @@ project("zephyr honeywell hpma115 example")
 add_subdirectory(drivers)
 
 target_sources(app PRIVATE src/main.c)
+zephyr_include_directories(drivers/sensor/honeywell-hpma115)
