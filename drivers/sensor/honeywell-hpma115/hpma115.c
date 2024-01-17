@@ -17,7 +17,7 @@ static int hpma115_send_command(const struct device *dev, enum hpma115_cmd cmd);
 static int hpma115_write_command(const struct device *dev, uint8_t cmd_length);
 static int hpma115_read_response(const struct device *dev, uint8_t length);
 static int hpma155_poll_read_response(const struct device *dev, uint8_t length_to_read);
-static int hpma115_read_data(const struct device *dev,  uint8_t *len, uint8_t **data_in);
+static int hpma115_read_data(const struct device *dev,  uint8_t *len, uint8_t **data_out);
 static uint8_t hpma115_compute_checksum(uint8_t *frame);
 
 /**
@@ -28,6 +28,16 @@ static uint8_t hpma115_compute_checksum(uint8_t *frame);
 static int hpma115_attr_start_measurement(const struct device *dev)
 {
     return hpma115_send_command(dev, StartMeas);
+}
+
+/**
+ * @brief stop autosend.
+ * 
+ * @param dev hpma115 UART peripheral device.
+ */
+static int hpma115_attr_stop_autosend(const struct device *dev)
+{
+    return hpma115_send_command(dev, StopAutoSend);
 }
 
 /**
@@ -45,33 +55,39 @@ static int hpma115_sample_fetch(const struct device *dev, enum sensor_channel ch
     const struct hpma115_conf *conf = dev->config; 
     struct uart_data *data = conf->uart_data;
     struct hpma115_sensor_data *result = dev->data;
-    uint8_t len;
-    uint8_t *data_out;
+    uint8_t len = 0;
+    uint8_t *data_out = NULL;
+
 
     int ret = hpma115_read_data(dev, &len, &data_out);
-
-    // if (ret) {
-    //     return ret;
-    // }
     
-    // if (len == 13) { /* It's a compact sensor. */
-    //     result->pm1_pm4_valid = true;
-    //     result->pm1_0 = ((uint16_t)(data_out[1]) << 8) + data_out[2];
-    //     result->pm2_5 = ((uint16_t)(data_out[3]) << 8) + data_out[4];
-    //     result->pm4_0 = ((uint16_t)(data_out[5]) << 8) + data_out[6];
-    //     result->pm10 = ((uint16_t)(data_out[7]) << 8) + data_out[8];
-    // } else if (len == 5) { /* It's a standard sensor. */
-    //     result->pm1_pm4_valid = false;
-    //     result->pm1_0 = 0;
-    //     result->pm4_0 = 0;
-    //     result->pm2_5 = ((uint16_t)(data_out[1]) << 8) + data_out[2];
-    //     result->pm10 = ((uint16_t)(data_out[3]) << 8) + data_out[4];
-    // } else {
-    //     return false;
-    // }
-    LOG_DBG("read measures OK");
-    return true;
+    if (ret) {
+        return ret;
+    }
 
+    LOG_DBG("data len: %d", len);
+    // set data
+    if (len == 13) { /* It's a compact sensor. */  
+        result->pm1_pm4_valid = true;
+        result->pm1_0 = ((uint16_t)(data_out[0]) << 8) + data_out[1];
+        LOG_DBG("pm1_0: %d", result->pm1_0);
+        result->pm2_5 = ((uint16_t)(data_out[2]) << 8) + data_out[3];
+        LOG_DBG("pm2_5: %d", result->pm2_5);
+        result->pm4_0 = ((uint16_t)(data_out[4]) << 8) + data_out[5];
+        LOG_DBG("pm4_0: %d", result->pm4_0);
+        result->pm10 = ((uint16_t)(data_out[6]) << 8) + data_out[7];
+        LOG_DBG("pm10: %d", result->pm10);
+    } else if (len == 5) { /* It's a standard sensor: not supported */
+        result->pm1_pm4_valid = false;
+        result->pm1_0 = 0;
+        result->pm4_0 = 0;
+        result->pm2_5 = ((uint16_t)(data_out[0]) << 8) + data_out[1];
+        result->pm10 = ((uint16_t)(data_out[2]) << 8) + data_out[3];
+    } else {
+        LOG_DBG("Read measures error!");
+    }
+
+    return ret;
 }
 
 static int hpma115_channel_get(const struct device *dev, enum sensor_channel chan,
@@ -134,14 +150,12 @@ static uint8_t hpma115_compute_checksum(uint8_t *frame)
     return csum;
 }
 
-static int hpma115_read_data(const struct device *dev,  uint8_t *len, uint8_t **data_in)
+static int hpma115_read_data(const struct device *dev,  uint8_t *len, uint8_t **data_out)
 {
     struct hpma115_conf *conf = dev->config;
     struct uart_data *data = conf->uart_data;
     struct hpma115_sensor_data *result = dev->data;
     int ret;
-    uint8_t *data_out;
-    uint8_t len_out;
 
     data->tx_buf[0] = (uint8_t)(Send);
     data->tx_buf[1] = 1;
@@ -154,33 +168,14 @@ static int hpma115_read_data(const struct device *dev,  uint8_t *len, uint8_t **
     ret = hpma115_write_command(dev, 4);
 
     ret = hpma115_read_response(dev, HPMA115_BUF_LEN);
-    
-    if (!ret) {
-        if (data->has_rsp) {
-            if (data->rx_buf[0] == (uint8_t)Resp) {
-                len_out = data->rx_buf[1];
-                data_out = data->rx_buf + 2;
-                // set data
-                if (len_out == 13) { /* It's a compact sensor. */
-                    for (uint8_t i = 0; i < HPMA115_BUF_LEN; i++) {
-                        LOG_DBG("%X", data_out[i]);
-                    }
-                    result->pm1_pm4_valid = true;
-                    result->pm1_0 = ((uint16_t)(data_out[1]) << 8) + data_out[2];
-                    result->pm2_5 = ((uint16_t)(data_out[3]) << 8) + data_out[4];
-                    result->pm4_0 = ((uint16_t)(data_out[5]) << 8) + data_out[6];
-                    result->pm10 = ((uint16_t)(data_out[7]) << 8) + data_out[8];
-                } else if (len_out == 5) { /* It's a standard sensor. */
-                    result->pm1_pm4_valid = false;
-                    result->pm1_0 = 0;
-                    result->pm4_0 = 0;
-                    result->pm2_5 = ((uint16_t)(data_out[1]) << 8) + data_out[2];
-                    result->pm10 = ((uint16_t)(data_out[3]) << 8) + data_out[4];
-                } 
-            }
-        }
-    }
 
+     if (data->has_rsp) {
+        if (data->rx_buf[0] == (uint8_t)Resp) {
+            *data_out = data->rx_buf + 3;
+            *len = data->rx_buf[1];
+        }
+     }
+   
     return ret;
 }
 
@@ -314,10 +309,16 @@ static int hpma115_init(const struct device *dev)
 	// k_sem_init(&data->tx_sem, 1, 1);
     k_sem_init(&data->rx_sem, 0, 1);
 
+    /* stop autosend */
+    ret = hpma115_attr_stop_autosend(dev);
+    if (ret) {
+        LOG_ERR("Error on stop autosend!");
+        return ret;
+    }
 	/* start measurement */
     ret = hpma115_attr_start_measurement(dev);
-	if (ret != 0) {
-		LOG_ERR("Error on init!");
+	if (ret) {
+		LOG_ERR("Error on start measurement!");
 		return ret;
 	}
     LOG_DBG("sensor init OK\n");
