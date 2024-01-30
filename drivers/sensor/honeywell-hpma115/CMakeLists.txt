@@ -3,3 +3,4 @@
 
 zephyr_library()
 zephyr_library_sources(hpma115.c)
+zephyr_include_directories(.)
