@@ -1,7 +1,6 @@
 #include <zephyr/kernel.h>
+#include <zephyr/device.h>
 #include <zephyr/drivers/sensor.h>
-
-#include "hpma115.h"
 
 #define SLEEP_TIME_MS   1000
 

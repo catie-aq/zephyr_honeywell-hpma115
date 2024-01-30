@@ -1,2 +1,1 @@
-source "Kconfig.zephyr"
 rsource "drivers/Kconfig"
