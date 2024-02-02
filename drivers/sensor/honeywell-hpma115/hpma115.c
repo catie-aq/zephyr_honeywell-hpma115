@@ -4,12 +4,10 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/uart.h>
 #include <string.h>
-
 #include <errno.h>
-
+#include <zephyr/logging/log.h> 
 #include "hpma115.h"
 
-#include <zephyr/logging/log.h> 
 LOG_MODULE_REGISTER(honeywell_hmpa115, CONFIG_SENSOR_LOG_LEVEL);
 
 // define private prototypes
