@@ -1,7 +1,5 @@
-&usart2 {
+&sixtron_uart {
     current-speed = <9600>;
-    pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
-    pinctrl-names = "default";
     status="okay";
     hpma115: hpma115_0 {
         compatible = "honeywell,hpma115";
