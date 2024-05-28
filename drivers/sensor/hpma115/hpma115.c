@@ -296,9 +296,6 @@ static int hpma115_init(const struct device *dev)
 	int ret = 0;
 
 	uart_irq_rx_disable(conf->uart_dev);
-	// uart_irq_tx_disable(cfg->uart_dev);
-
-	hpma115_uart_flush(conf->uart_dev);
 
 	uart_irq_callback_user_data_set(conf->uart_dev, conf->cb, (void *)dev);
 
