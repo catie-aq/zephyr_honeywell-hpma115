@@ -3,7 +3,7 @@
 
 ## Required hardware
 To run this project the following hardware is required:
- - Zest_Sensor_Dustdevicetree overlays.   
+ - Zest_Sensor_Dustdevicetree overlays.
  - Zest_Core_stm32l4a6rg
 
 ## Setup
