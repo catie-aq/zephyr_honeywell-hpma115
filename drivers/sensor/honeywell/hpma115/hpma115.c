@@ -14,7 +14,6 @@ LOG_MODULE_REGISTER(honeywell_hmpa115, CONFIG_SENSOR_LOG_LEVEL);
 static int hpma115_send_command(const struct device *dev, enum hpma115_cmd cmd);
 static void hpma115_write_command(const struct device *dev, uint8_t cmd_length);
 static int hpma115_read_response(const struct device *dev, uint8_t length);
-static int hpma155_poll_read_response(const struct device *dev, uint8_t length_to_read);
 static int hpma115_read_data(const struct device *dev,  uint8_t *len, uint8_t **data_out);
 static uint8_t hpma115_compute_checksum(uint8_t *frame);
 
@@ -36,16 +35,6 @@ static int hpma115_attr_start_measurement(const struct device *dev)
 static int hpma115_attr_stop_autosend(const struct device *dev)
 {
     return hpma115_send_command(dev, StopAutoSend);
-}
-
-/**
- * @brief stop measurement.
- * 
- * @param dev hpma115 UART peripheral device.
- */
-static int hpma115_attr_stop_measurement(const struct device *dev)
-{
-    return hpma115_send_command(dev, StopMeas);
 }
 
 static int hpma115_sample_fetch(const struct device *dev, enum sensor_channel chan)
@@ -217,26 +206,6 @@ static void hpma115_write_command(const struct device *dev, uint8_t cmd_length)
     for (uint8_t i = 0; i < cmd_length; i++) {
         uart_poll_out(conf->uart_dev, data->tx_buf[i]);
     }
-}
-
-static int hpma155_poll_read_response(const struct device *dev, uint8_t length_to_read)
-{
-    const struct hpma115_conf *conf = dev->config;
-    struct uart_data *data = conf->uart_data;
-    uint8_t c;
-
-    data->rx_data_len = 0;
-    while(length_to_read) {
-        if (!uart_poll_in(conf->uart_dev, &c)) {
-            data->rx_buf[ data->rx_data_len] = c;
-            data->rx_data_len++;
-            length_to_read--;
-        }
-    }
-
-    LOG_DBG("Rx buff %X %X\n", data->rx_buf[0], data->rx_buf[1]);
-
-    return data->rx_data_len;
 }
 
 static int hpma115_read_response(const struct device *dev, uint8_t length)
