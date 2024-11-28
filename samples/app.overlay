@@ -4,6 +4,5 @@
     hpma115: hpma115_0 {
         compatible = "honeywell,hpma115";
         status="okay";
-        label = "hpma115_0";
     };
 };
