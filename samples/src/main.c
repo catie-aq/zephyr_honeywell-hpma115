@@ -4,7 +4,7 @@
 
 #define SLEEP_TIME_MS   1000
 
-void main(void)
+int main(void)
 {
     int ret;
     const struct device *sensor;
@@ -15,7 +15,7 @@ void main(void)
 
     if (!device_is_ready(sensor)) {
         printk("Sensor not ready");
-        return;
+        return 0;
     }
 
     while (1) {
@@ -28,7 +28,7 @@ void main(void)
         printk("PM10: %d\n", val.val1);
 		if (ret < 0) {
 			printk("Could not get sample (%d)", ret);
-			return;
+			return 0;
 		}        
         k_msleep(SLEEP_TIME_MS);
     }
