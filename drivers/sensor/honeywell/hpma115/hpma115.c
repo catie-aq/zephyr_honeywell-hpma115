@@ -97,7 +97,7 @@ static int hpma115_channel_get(const struct device *dev, enum sensor_channel cha
 	return 0;
 }
 
-static const struct sensor_driver_api hpma115_api_funcs = {
+static DEVICE_API(sensor, hpma115_api_funcs) = {
 	.channel_get = hpma115_channel_get,
 	.sample_fetch = hpma115_sample_fetch,
 };
@@ -239,9 +239,7 @@ static void hpma115_uart_isr(const struct device *uart_dev, void *user_data)
 		return;
 	}
 
-	if (!uart_irq_update(uart_dev)) {
-		return;
-	}
+	uart_irq_update(uart_dev);
 
 	if (uart_irq_rx_ready(uart_dev)) {
 		data->xfer_bytes += uart_fifo_read(uart_dev, &data->rx_buf[data->xfer_bytes],
